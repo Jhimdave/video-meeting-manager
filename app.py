@@ -5,13 +5,30 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
 import config
+from paths import APP_DIR
 import pipeline
+
+import os
+import sys
+
+
+os.chdir(APP_DIR)
+
+
+def _icon_path() -> str:
+    """icon.ico: bundled inside the exe (PyInstaller --add-data) or next to app.py when run from source."""
+    base = getattr(sys, "_MEIPASS", str(APP_DIR))
+    return os.path.join(base, "icon.ico")
 
 
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("Meeting to Notion")
+        try:  # window + taskbar icon
+            self.iconbitmap(default=_icon_path())
+        except Exception:
+            pass
         self.geometry("760x640")
         self.q: queue.Queue = queue.Queue()
         self.vars = {k: tk.StringVar() for k in ("path", "title", "video_link", "time_finished")}

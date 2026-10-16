@@ -10,13 +10,21 @@ import summarizer
 import transcriber
 from config import Settings
 from notion import Notion
+from paths import APP_DIR
 
-OUT_DIR = Path(__file__).parent / "transcripts"
+OUT_DIR = APP_DIR / "transcripts"
 TIMESTAMP = re.compile(r"^\[[\d:]+\]\s*", re.M)
 
 
+def _timezone(tz_name: str):
+    try:
+        return ZoneInfo(tz_name)
+    except Exception:
+        return datetime.now().astimezone().tzinfo
+
+
 def _build_date(video: Path, duration: float, override: str, tz_name: str) -> dict:
-    tz = ZoneInfo(tz_name)
+    tz = _timezone(tz_name)
     if override.strip():
         end = datetime.strptime(override.strip(), "%Y-%m-%d %H:%M").replace(tzinfo=tz)
     else:
@@ -65,6 +73,12 @@ def process_video(video: Path, form: dict, s: Settings, notion: Notion,
             file_ids.append((txt_path.name, notion.upload_file(txt_path, "text/plain")))
         except Exception as e:
             log(f"Transcript file upload skipped: {e}")
+
+    try:
+        date = _build_date(video, duration, form.get("time_finished", ""), s.timezone)
+    except Exception as e:
+        log(f"Time finished skipped ({e}). Use format YYYY-MM-DD HH:MM")
+        date = None
 
     log("Creating Notion page...")
     url = notion.create_meeting(
