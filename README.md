@@ -15,10 +15,10 @@ Paste the path of a meeting video (or a folder of videos), click one button, and
 | Attendees | relation, set from the IDs the AI identified |
 | Projects | relation, set from the IDs the AI identified |
 | Files & media | the transcript as a `.txt` file |
-| Notes | overview + action items |
+| Notes | short meeting overview only |
 | Video Link | the URL you type |
 
-The page body gets Overview, Summary (sections with bullets), Decisions, Action items (checkboxes) and the full Transcript.
+The page body gets Overview, Summary (sections with bullets), Decisions, Action items (checkboxes) and the full Transcript. Action items are kept out of the database Notes property.
 
 ## The weekly cache
 
@@ -31,9 +31,9 @@ this list, so the AI can never link a page that doesn't exist.
 
 1. Python 3.10+ and **ffmpeg** (`winget install ffmpeg` / `brew install ffmpeg` / `apt install ffmpeg`).
 2. `pip install -r requirements.txt` (Linux may also need `sudo apt install python3-tk`).
-3. Copy `.env.example` to `.env` and fill in `NOTION_TOKEN`, `NOTION_DATABASE_ID`, `GROQ_API_KEY`.
+3. Copy `.env.example` to `.env` and fill in `NOTION_TOKEN`, `NOTION_DATABASE_ID`, `GROQ_API_KEY`. To use a data source directly, copy its ID in Notion's **Manage data sources** menu and set `NOTION_DATA_SOURCE_ID`; this skips database-ID discovery. Use `NOTION_PEOPLE_DATA_SOURCE_ID` / `NOTION_PROJECTS_DATA_SOURCE_ID` to directly select relation data sources if needed.
 4. In Notion, open the Meeting Notes database > `...` > Connections > add your integration.
-   Do the same for the **People** and **Projects** databases, otherwise they can't be read.
+   Do the same for the databases linked by the **Attendees** and **Projects** relation properties, otherwise they can't be read.
 5. `python app.py`
 
 ## Free-tier notes (Groq)

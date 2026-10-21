@@ -16,6 +16,10 @@ OUT_DIR = APP_DIR / "transcripts"
 TIMESTAMP = re.compile(r"^\[[\d:]+\]\s*", re.M)
 
 
+def _notes_description(overview: str) -> str:
+    return overview.strip() or "See transcript on the page."
+
+
 def _timezone(tz_name: str):
     try:
         return ZoneInfo(tz_name)
@@ -61,10 +65,7 @@ def process_video(video: Path, form: dict, s: Settings, notion: Notion,
     log("Projects: " + (", ".join(names[i] for i in match["project_ids"]) or "none identified"))
 
     summ = summarizer.summarize(ai_text, s, log)
-    notes = summ["overview"]
-    if summ["action_items"]:
-        notes += "\n\nAction items:\n" + "\n".join(f"- {i}" for i in summ["action_items"])
-    notes = notes.strip() or "See transcript on the page."
+    notes = _notes_description(summ["overview"])
 
     file_ids = []
     if s.upload_transcript:

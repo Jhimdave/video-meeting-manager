@@ -10,6 +10,10 @@ __pycache__/
 .venv/
 venv/
 
+# PyInstaller build output
+build/
+dist/
+
 # Generated cache and private meeting data
 cache/
 transcripts/

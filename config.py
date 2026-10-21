@@ -35,8 +35,11 @@ def clean_notion_id(value: str) -> str:
 class Settings:
     notion_token: str
     database_id: str
+    data_source_id: str
     people_db_id: str
+    people_data_source_id: str
     projects_db_id: str
+    projects_data_source_id: str
 
     prop_title: str
     prop_time: str
@@ -66,8 +69,11 @@ def load_settings() -> Settings:
     return Settings(
         notion_token=_get("NOTION_TOKEN"),
         database_id=clean_notion_id(_get("NOTION_DATABASE_ID")),
+        data_source_id=clean_notion_id(_get("NOTION_DATA_SOURCE_ID")),
         people_db_id=clean_notion_id(_get("NOTION_PEOPLE_DB_ID")),
+        people_data_source_id=clean_notion_id(_get("NOTION_PEOPLE_DATA_SOURCE_ID")),
         projects_db_id=clean_notion_id(_get("NOTION_PROJECTS_DB_ID")),
+        projects_data_source_id=clean_notion_id(_get("NOTION_PROJECTS_DATA_SOURCE_ID")),
         prop_title=_get("PROP_TITLE", "Title"),
         prop_time=_get("PROP_TIME", "Time finished"),
         prop_attendees=_get("PROP_ATTENDEES", "Attendees"),
@@ -93,8 +99,8 @@ def validate(s: Settings) -> list[str]:
     errors = []
     if not s.notion_token:
         errors.append("NOTION_TOKEN is missing in .env")
-    if not s.database_id:
-        errors.append("NOTION_DATABASE_ID is missing in .env")
+    if not s.database_id and not s.data_source_id:
+        errors.append("NOTION_DATABASE_ID or NOTION_DATA_SOURCE_ID is missing in .env")
     if not s.groq_api_key:
         errors.append("GROQ_API_KEY is missing in .env (needed for the AI summary even in local transcription mode)")
     if s.provider not in ("groq", "local"):

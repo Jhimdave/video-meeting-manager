@@ -7,7 +7,7 @@ import requests
 from config import Settings
 
 API = "https://api.notion.com/v1"
-VERSION = "2022-06-28"
+VERSION = "2026-03-11"
 TEXT_LIMIT = 2000
 
 
@@ -32,6 +32,7 @@ class Notion:
         self.log = log
         self.http = requests.Session()
         self.http.headers.update({"Authorization": f"Bearer {s.notion_token}", "Notion-Version": VERSION})
+        self._databases: dict[str, dict] = {}
         self._schemas: dict[str, dict] = {}
 
     # ---------- low level ----------
@@ -46,33 +47,67 @@ class Notion:
             return r.json()
         raise NotionError("Notion rate limit hit repeatedly.")
 
-    def schema(self, db_id: str) -> dict:
-        if db_id not in self._schemas:
-            self._schemas[db_id] = self._req("GET", f"/databases/{db_id}")
-        return self._schemas[db_id]
+    def _database(self, database_id: str) -> dict:
+        if database_id not in self._databases:
+            self._databases[database_id] = self._req("GET", f"/databases/{database_id}")
+        return self._databases[database_id]
 
-    def _title_prop(self, db_id: str) -> str:
-        for name, p in self.schema(db_id)["properties"].items():
+    def _resolve_data_source_id(self, database_id: str, data_source_id: str = "",
+                                setting_name: str = "NOTION_DATA_SOURCE_ID") -> str:
+        if data_source_id:
+            return data_source_id
+        if not database_id:
+            raise NotionError(f"Set {setting_name} to a Notion data source ID.")
+        sources = self._database(database_id).get("data_sources") or []
+        if len(sources) == 1:
+            return sources[0]["id"]
+        if not sources:
+            raise NotionError(f"Database {database_id} has no accessible data sources.")
+        choices = ", ".join(f"{source.get('name', 'unnamed')}: {source.get('id')}" for source in sources)
+        raise NotionError(
+            f"Database {database_id} has multiple data sources ({choices}); "
+            f"set {setting_name} to the intended data source ID."
+        )
+
+    def _main_data_source_id(self) -> str:
+        return self._resolve_data_source_id(self.s.database_id, self.s.data_source_id)
+
+    def schema(self, data_source_id: str) -> dict:
+        if data_source_id not in self._schemas:
+            self._schemas[data_source_id] = self._req("GET", f"/data_sources/{data_source_id}")
+        return self._schemas[data_source_id]
+
+    def _title_prop(self, data_source_id: str) -> str:
+        for name, p in self.schema(data_source_id)["properties"].items():
             if p["type"] == "title":
                 return name
-        raise NotionError(f"Database {db_id} has no title property")
+        raise NotionError(f"Data source {data_source_id} has no title property")
 
     # ---------- relations ----------
-    def related_pages(self, prop_name: str, override_db: str = "") -> list[dict]:
-        """Returns every page [{id, title}] of the database a relation column points to."""
-        prop = self.schema(self.s.database_id)["properties"].get(prop_name)
+    def related_pages(self, prop_name: str, override_db: str = "", override_data_source: str = "",
+                      source_setting: str = "NOTION_PEOPLE_DATA_SOURCE_ID") -> list[dict]:
+        """Returns every page [{id, title}] from the data source a relation points to."""
+        prop = self.schema(self._main_data_source_id())["properties"].get(prop_name)
         if not prop or prop["type"] != "relation":
             self.log(f"  ! '{prop_name}' is not a relation column in the database - matching skipped")
             return []
-        db_id = override_db or prop["relation"]["database_id"]
+        relation = prop["relation"]
+        relation_db_id = relation.get("database_id", "")
+        db_id = override_db or relation_db_id
+        relation_data_source_id = relation.get("data_source_id", "") if db_id == relation_db_id else ""
         try:
-            title_prop = self._title_prop(db_id)
+            data_source_id = self._resolve_data_source_id(
+                db_id,
+                override_data_source or relation_data_source_id,
+                source_setting,
+            )
+            title_prop = self._title_prop(data_source_id)
             pages, cursor = [], None
             while True:
                 body = {"page_size": 100}
                 if cursor:
                     body["start_cursor"] = cursor
-                res = self._req("POST", f"/databases/{db_id}/query", json=body)
+                res = self._req("POST", f"/data_sources/{data_source_id}/query", json=body)
                 for p in res["results"]:
                     title = "".join(t.get("plain_text", "") for t in p["properties"][title_prop]["title"]).strip()
                     if title:
@@ -82,8 +117,7 @@ class Notion:
                 cursor = res["next_cursor"]
             return pages
         except NotionError as e:
-            self.log(f"  ! could not read the database behind '{prop_name}' "
-                     f"(share it with your integration): {e}")
+            self.log(f"  ! could not read the data source behind '{prop_name}': {e}")
             return []
 
     # ---------- files ----------
@@ -100,7 +134,8 @@ class Notion:
                        overview: str, sections: list[dict], decisions: list[str],
                        action_items: list[str], transcript: str) -> str:
         s = self.s
-        db_props = self.schema(s.database_id)["properties"]
+        data_source_id = self._resolve_data_source_id(s.database_id, s.data_source_id)
+        db_props = self.schema(data_source_id)["properties"]
         props: dict = {}
 
         def has(name: str) -> bool:
@@ -109,7 +144,7 @@ class Notion:
                 return False
             return True
 
-        props[self._title_prop(s.database_id)] = {"title": rich_text(title, 200)}
+        props[self._title_prop(data_source_id)] = {"title": rich_text(title, 200)}
 
         if date and has(s.prop_time):
             props[s.prop_time] = {"date": date}
@@ -164,7 +199,8 @@ class Notion:
         blocks += _paragraphs(transcript)
 
         page = self._req("POST", "/pages", json={
-            "parent": {"database_id": s.database_id}, "properties": props, "children": blocks[:100]})
+            "parent": {"type": "data_source_id", "data_source_id": data_source_id},
+            "properties": props, "children": blocks[:100]})
         rest = blocks[100:]
         for i in range(0, len(rest), 100):
             self._req("PATCH", f"/blocks/{page['id']}/children", json={"children": rest[i:i + 100]})

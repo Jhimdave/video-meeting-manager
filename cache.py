@@ -46,13 +46,23 @@ def _save(data: dict, days: int) -> None:
 
 def get_lists(notion, s: Settings, log, force: bool = False) -> tuple[list[dict], list[dict]]:
     data = _load()
-    if data.get("meeting_db") != s.database_id:
-        data = {"meeting_db": s.database_id}
+    scope = {
+        "meeting_database": s.database_id,
+        "meeting_data_source": s.data_source_id,
+        "people_database": s.people_db_id,
+        "people_data_source": s.people_data_source_id,
+        "projects_database": s.projects_db_id,
+        "projects_data_source": s.projects_data_source_id,
+    }
+    if data.get("scope") != scope:
+        data = {"scope": scope}
     now = time.time()
     changed = False
     out = {}
-    for key, prop, override in (("people", s.prop_attendees, s.people_db_id),
-                                ("projects", s.prop_projects, s.projects_db_id)):
+    for key, prop, override, source_override in (
+        ("people", s.prop_attendees, s.people_db_id, s.people_data_source_id),
+        ("projects", s.prop_projects, s.projects_db_id, s.projects_data_source_id),
+    ):
         entry = data.get(key) or {}
         items = entry.get("items") or []
         age_days = (now - entry.get("fetched_at", 0)) / 86400
@@ -60,7 +70,8 @@ def get_lists(notion, s: Settings, log, force: bool = False) -> tuple[list[dict]
             log(f"Using cached {key}: {len(items)} (updated {_stamp(entry['fetched_at'])})")
         else:
             log(f"Refreshing {key} from Notion...")
-            items = notion.related_pages(prop, override)
+            setting_name = f"NOTION_{key.upper()}_DATA_SOURCE_ID"
+            items = notion.related_pages(prop, override, source_override, setting_name)
             if items:
                 data[key] = {"fetched_at": now, "items": items}
                 changed = True
